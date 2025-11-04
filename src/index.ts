@@ -3,6 +3,7 @@ import express from "express";
 import { ENV } from "@config/environment";
 import { DatabaseService } from "@services/database.service";
 import { errorHandler } from "@middlewares/error-handler.middleware";
+import cors from "cors";
 
 // Importar las funciones creadoras de rutas
 import { createAuthRoutes } from "@routes/auth.routes";
@@ -19,6 +20,20 @@ const startServer = async () => {
     const app = express();
 
     // 2. Configurar Middlewares
+    app.use((req, res, next) => {
+      res.header('Access-Control-Allow-Origin', 'http://localhost:5173');
+      res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
+      res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+  // Si es una llamada de 'preflight' (OPTIONS), le decimos OK y listo.
+  if (req.method === 'OPTIONS') {
+    console.log('¡¡¡RECIBIDO PREFLIGHT (OPTIONS) Y APROBADO!!!');
+    return res.sendStatus(200);
+  }
+
+  console.log('¡¡¡PERMISO DE CORS DADO!!!');
+  next(); // Si no, que siga para las rutas
+});
     app.use(express.json());
 
     // 3. Configurar Rutas, inyectando el dataSource
@@ -34,7 +49,7 @@ const startServer = async () => {
 
     // 5. Iniciar el servidor
     app.listen(ENV.PORT, () => {
-      console.log(`🚀 Servidor corriendo en http://localhost:${ENV.PORT}`);
+      console.log(`🚀 ¡¡¡BACKEND LEVANTADO CON EL ARREGLO BRUTO!!! http://localhost:${ENV.PORT}`);
     });
 
   } catch (error) {
