@@ -9,6 +9,7 @@ export interface WorkOrderFilters {
   plotId?: string;
   startDate?: Date;
   endDate?: Date;
+  managedFieldIds?: string[]; // Para filtrar por campos gestionados (CAPATAZ)
 }
 
 /**
@@ -19,6 +20,8 @@ export interface ActivityFilters {
   type?: ActivityType;
   startDate?: Date;
   endDate?: Date;
+  managedFieldIds?: string[]; // Para filtrar por campos gestionados (CAPATAZ)
+  assignedToId?: string; // Para filtrar por OTs asignadas (OPERARIO)
 }
 
 /**
@@ -28,6 +31,8 @@ export interface FieldFilters {
   managerId?: string;
   minArea?: number;
   maxArea?: number;
+  managedFieldIds?: string[]; // Para filtrar por campos gestionados (CAPATAZ)
+  withDeleted?: boolean; // Soporte para soft delete
 }
 
 /**
@@ -38,4 +43,26 @@ export interface PlotFilters {
   varietyId?: string;
   minArea?: number;
   maxArea?: number;
+  managedFieldIds?: string[]; // Para filtrar por campos gestionados (CAPATAZ)
+  withDeleted?: boolean; // Soporte para soft delete
+}
+
+/**
+ * Interfaz para filtros de búsqueda de clientes
+ */
+export interface CustomerFilters {
+  searchTerm?: string;
+  minTotalPurchases?: number;
+  maxTotalPurchases?: number;
+  withDeleted?: boolean;
+}
+
+/**
+ * Interfaz para filtros de búsqueda de proveedores
+ */
+export interface SupplierFilters {
+  searchTerm?: string;
+  minTotalSupplied?: number;
+  maxTotalSupplied?: number;
+  withDeleted?: boolean;
 }

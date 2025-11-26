@@ -6,6 +6,14 @@ import { CreatePlotDto, UpdatePlotDto } from '@dtos/plot.dto';
 import { PlotFilters } from '@/interfaces/filters.interface';
 import { HttpException } from '@/exceptions/HttpException';
 import { StatusCodes } from 'http-status-codes';
+import { UserRole } from '@/enums';
+
+interface GetAllPlotsOptions {
+  includeFullDetails?: boolean;
+  filters?: PlotFilters;
+  userId?: string;
+  userRole?: UserRole;
+}
 
 export class PlotService {
   private plotRepository: Repository<Plot>;
@@ -20,154 +28,127 @@ export class PlotService {
 
   /**
    * Crear una nueva parcela
-   * @param createPlotDto Datos de la parcela a crear
-   * @returns Promise<Plot>
    */
   async createPlot(createPlotDto: CreatePlotDto): Promise<Plot> {
     const { fieldId, varietyId, ...plotFields } = createPlotDto;
-
-    if (!fieldId) {
-      throw new HttpException(
-        StatusCodes.BAD_REQUEST,
-        'El ID del campo es obligatorio.'
-      );
-    }
-
+    if (!fieldId) throw new HttpException(StatusCodes.BAD_REQUEST, 'El ID del campo es obligatorio.');
     const field = await this.fieldRepository.findOneBy({ id: fieldId });
-    if (!field) {
-      throw new HttpException(
-        StatusCodes.NOT_FOUND,
-        `El campo con ID ${fieldId} no fue encontrado.`
-      );
+    if (!field) throw new HttpException(StatusCodes.NOT_FOUND, `El campo con ID ${fieldId} no fue encontrado.`);
+    if (varietyId) {
+      const variety = await this.varietyRepository.findOneBy({ id: varietyId });
+      if (!variety) throw new HttpException(StatusCodes.NOT_FOUND, `La variedad con ID ${varietyId} no fue encontrada.`);
     }
-
-    const variety = await this.varietyRepository.findOneBy({ id: varietyId });
-    if (!variety) {
-      throw new HttpException(
-        StatusCodes.NOT_FOUND,
-        `La variedad con ID ${varietyId} no fue encontrada.`
-      );
-    }
-
-    const plot = this.plotRepository.create({
-      ...plotFields,
-      fieldId,
-      varietyId,
-    });
-
-    return await this.plotRepository.save(plot);
+    const plotData: Partial<Plot> = { ...plotFields, field: { id: fieldId } as any };
+    if (varietyId) plotData.variety = { id: varietyId } as any;
+    const plot = this.plotRepository.create(plotData);
+    const savedPlot = await this.plotRepository.save(plot);
+    return await this.getPlotById(savedPlot.id);
   }
 
   /**
-   * Obtener todas las parcelas con filtros opcionales
-   * @param filters Filtros opcionales para la búsqueda
-   * @returns Promise<Plot[]>
-   * 
-   * Ejemplos de uso:
-   * - getAllPlots() → Todas las parcelas
-   * - getAllPlots({ fieldId: '123' }) → Parcelas de un campo específico
-   * - getAllPlots({ varietyId: '456' }) → Parcelas de una variedad específica
-   * - getAllPlots({ minArea: 50, maxArea: 200 }) → Parcelas por rango de área
+   * Obtener todas las parcelas con proyección adaptativa según contexto
    */
-  async getAllPlots(filters?: PlotFilters): Promise<Plot[]> {
-    const queryBuilder = this.plotRepository
-      .createQueryBuilder('plot')
-      .leftJoinAndSelect('plot.field', 'field')
-      .leftJoinAndSelect('plot.variety', 'variety');
+  async getAllPlots(options: GetAllPlotsOptions = {}): Promise<{ data: (Plot | Partial<Plot>)[]; count: number }> {
+    const { includeFullDetails = false, filters = {}, userId, userRole } = options;
 
-    if (filters) {
-      if (filters.fieldId) {
-        queryBuilder.andWhere('plot.fieldId = :fieldId', {
-          fieldId: filters.fieldId
-        });
-      }
+    const queryBuilder = this.plotRepository.createQueryBuilder('plot');
 
-      if (filters.varietyId) {
-        queryBuilder.andWhere('plot.varietyId = :varietyId', {
-          varietyId: filters.varietyId
-        });
-      }
+    
+    if (filters.withDeleted) {
+      queryBuilder.withDeleted();
+    }
 
-      if (filters.minArea) {
-        queryBuilder.andWhere('plot.area >= :minArea', {
-          minArea: filters.minArea
-        });
-      }
+    // Determinar si debe incluir detalles completos
+    const hasFilters = 
+      filters.fieldId !== undefined ||
+      filters.varietyId !== undefined ||
+      filters.managedFieldIds !== undefined ||
+      filters.minArea !== undefined ||
+      filters.maxArea !== undefined;
 
-      if (filters.maxArea) {
-        queryBuilder.andWhere('plot.area <= :maxArea', {
-          maxArea: filters.maxArea
-        });
-      }
+    const shouldIncludeDetails = 
+      includeFullDetails || 
+      userRole === UserRole.ADMIN ||
+      hasFilters;
+
+    if (shouldIncludeDetails) {
+      // Datos completos: incluir relaciones y todos los campos
+      queryBuilder
+        .leftJoinAndSelect('plot.field', 'field')
+        .leftJoinAndSelect('plot.variety', 'variety');
+    } else {
+      // Solo datos de mapa: proyección limitada
+      queryBuilder.select([
+        'plot.id',
+        'plot.name',
+        'plot.location',
+      ]);
+    }
+
+    // Aplicar filtros
+    if (filters.fieldId) {
+      queryBuilder.andWhere('plot.fieldId = :fieldId', { fieldId: filters.fieldId });
+    }
+
+    if (filters.varietyId) {
+      queryBuilder.andWhere('plot.varietyId = :varietyId', { varietyId: filters.varietyId });
+    }
+
+    if (filters.minArea) {
+      queryBuilder.andWhere('plot.area >= :minArea', { minArea: filters.minArea });
+    }
+
+    if (filters.maxArea) {
+      queryBuilder.andWhere('plot.area <= :maxArea', { maxArea: filters.maxArea });
+    }
+
+    // Filtro especial para CAPATAZ: Solo parcelas de campos gestionados
+    if (filters.managedFieldIds && filters.managedFieldIds.length > 0) {
+      queryBuilder.andWhere('plot.fieldId IN (:...managedFieldIds)', {
+        managedFieldIds: filters.managedFieldIds
+      });
     }
 
     queryBuilder.orderBy('plot.createdAt', 'DESC');
 
-    return await queryBuilder.getMany();
+    const [data, count] = await queryBuilder.getManyAndCount();
+
+    return { data, count };
   }
 
   /**
    * Buscar una parcela por su ID
-   * @param id ID de la parcela
-   * @returns Promise<Plot>
    */
   async getPlotById(id: string): Promise<Plot> {
-    const plot = await this.plotRepository.findOne({
-      where: { id },
-      relations: ['field', 'variety'],
-    });
-
-    if (!plot) {
-      throw new HttpException(
-        StatusCodes.NOT_FOUND,
-        'La parcela no fue encontrada.'
-      );
-    }
-
+    const plot = await this.plotRepository.findOne({ where: { id }, relations: ['field', 'variety'] });
+    if (!plot) throw new HttpException(StatusCodes.NOT_FOUND, 'La parcela no fue encontrada.');
     return plot;
   }
 
   /**
    * Actualizar una parcela por su ID
-   * @param id ID de la parcela
-   * @param updatePlotDto Datos a actualizar
-   * @returns Promise<Plot>
    */
   async updatePlot(id: string, updatePlotDto: UpdatePlotDto): Promise<Plot> {
     const plot = await this.getPlotById(id);
-    const { fieldId, varietyId, ...plotFields } = updatePlotDto;
-
-    this.plotRepository.merge(plot, plotFields);
-
-    if (fieldId) {
-      const field = await this.fieldRepository.findOneBy({ id: fieldId });
-      if (!field) {
-        throw new HttpException(
-          StatusCodes.NOT_FOUND,
-          `El campo con ID ${fieldId} no fue encontrado.`
-        );
+    const { varietyId, ...plotFields } = updatePlotDto;
+    const updateData: any = { ...plotFields };
+    if (varietyId !== undefined) {
+      if (varietyId === null) { updateData.varietyId = null; } 
+      else {
+        const variety = await this.varietyRepository.findOneBy({ id: varietyId });
+        if (!variety) throw new HttpException(StatusCodes.NOT_FOUND, `La variedad con ID ${varietyId} no fue encontrada.`);
+        updateData.varietyId = varietyId;
       }
-      plot.fieldId = fieldId;
     }
-
-    if (varietyId) {
-      const variety = await this.varietyRepository.findOneBy({ id: varietyId });
-      if (!variety) {
-        throw new HttpException(
-          StatusCodes.NOT_FOUND,
-          `La variedad con ID ${varietyId} no fue encontrada.`
-        );
-      }
-      plot.varietyId = varietyId;
-    }
-
-    return await this.plotRepository.save(plot);
+    const updateResult = await this.plotRepository.createQueryBuilder().update(Plot).set(updateData).where('id = :id', { id }).execute();
+    if (updateResult.affected === 0) throw new HttpException(StatusCodes.INTERNAL_SERVER_ERROR, 'No se pudo actualizar la parcela.');
+    const updatedPlot = await this.plotRepository.findOne({ where: { id }, relations: ['field', 'variety'] });
+    if (!updatedPlot) throw new HttpException(StatusCodes.INTERNAL_SERVER_ERROR, 'No se pudo recuperar la parcela actualizada.');
+    return updatedPlot;
   }
 
   /**
-   * Eliminar una parcela por su ID (soft delete)
-   * @param id ID de la parcela
-   * @returns Promise<Plot> La parcela eliminada
+   * Eliminar una parcela (soft delete)
    */
   async deletePlot(id: string): Promise<Plot> {
     const plot = await this.getPlotById(id);
@@ -176,43 +157,19 @@ export class PlotService {
 
   /**
    * Restaurar una parcela por su ID
-   * @param id ID de la parcela a restaurar
-   * @returns Promise<Plot> La parcela restaurada
    */
   async restorePlot(id: string): Promise<Plot> {
-    const plot = await this.plotRepository.findOne({
-      where: { id },
-      withDeleted: true,
-    });
-
-    if (!plot) {
-      throw new HttpException(
-        StatusCodes.NOT_FOUND,
-        'La parcela no fue encontrada.'
-      );
-    }
-
+    const plot = await this.plotRepository.findOne({ where: { id }, withDeleted: true });
+    if (!plot) throw new HttpException(StatusCodes.NOT_FOUND, 'La parcela no fue encontrada.');
     return await this.plotRepository.recover(plot);
   }
 
   /**
-   * Eliminar una parcela por su ID (hard delete)
-   * @param id ID de la parcela a eliminar de la base de datos
-   * @returns Promise<Plot> La parcela eliminada permanentemente
+   * Eliminar una parcela (hard delete)
    */
   async hardDeletePlot(id: string): Promise<Plot> {
-    const plot = await this.plotRepository.findOne({
-      where: { id },
-      withDeleted: true,
-    });
-
-    if (!plot) {
-      throw new HttpException(
-        StatusCodes.NOT_FOUND,
-        'La parcela no fue encontrada.'
-      );
-    }
-
+    const plot = await this.plotRepository.findOne({ where: { id }, withDeleted: true });
+    if (!plot) throw new HttpException(StatusCodes.NOT_FOUND, 'La parcela no fue encontrada.');
     return await this.plotRepository.remove(plot);
   }
 }

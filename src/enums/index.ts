@@ -14,11 +14,18 @@ export enum ActivityType {
   OTRO = 'OTRO',
 }
 
+export enum ActivityStatus {
+  PENDING = 'PENDING',   // Registrada por OPERARIO, esperando revisión/aprobación
+  APPROVED = 'APPROVED', // Capataz validó stock y horas (stock descontado)
+  REJECTED = 'REJECTED', // Capataz rechazó por inconsistencias
+}
+
 export enum WorkOrderStatus {
-  PENDING = 'PENDING',
-  IN_PROGRESS = 'IN_PROGRESS',
-  COMPLETED = 'COMPLETED',
-  CANCELLED = 'CANCELLED',
+  PENDING = 'PENDING',           // Asignada, no iniciada
+  IN_PROGRESS = 'IN_PROGRESS',   // Operario está trabajando en ella
+  UNDER_REVIEW = 'UNDER_REVIEW', // Operario terminó, esperando aprobación de capataz
+  COMPLETED = 'COMPLETED',       // Capataz aprobó y cerró la orden
+  CANCELLED = 'CANCELLED',       // Cancelada por capataz/admin
 }
 
 export enum InputUnit {
@@ -45,7 +52,8 @@ export enum WalnutCaliber {
 export enum PurchaseOrderStatus {
   PENDIENTE = 'PENDIENTE', // Recién creada
   APROBADA = 'APROBADA', // Aprobada por gerencia, lista para recibir
-  RECIBIDA = 'RECIBIDA', // Mercadería recibida (parcial o total)
+  RECIBIDA = 'RECIBIDA', // Mercadería recibida totalmente
+  RECIBIDA_PARCIAL = 'RECIBIDA_PARCIAL', // Recepción parcial registrada
   CERRADA = 'CERRADA', // Completada
   CANCELADA = 'CANCELADA',
 }

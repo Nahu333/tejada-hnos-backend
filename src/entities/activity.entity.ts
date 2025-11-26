@@ -1,8 +1,9 @@
-import { ActivityType } from "@/enums";
+import { ActivityType, ActivityStatus } from "@/enums";
 import { Column, CreateDateColumn, DeleteDateColumn, Entity, ManyToOne, OneToMany, PrimaryGeneratedColumn, UpdateDateColumn, JoinColumn } from "typeorm";
 import { WorkOrder } from "./work-order.entity";
 import { ActivityDetails } from "@/types";
 import { InputUsage } from "./input-usage.entity";
+import { Transform } from "class-transformer";
 
 @Entity('activities')
 export class Activity {
@@ -19,10 +20,21 @@ export class Activity {
   @Column({ type: 'enum', enum: ActivityType })
   type: ActivityType;
 
+  @Column({
+    type: 'enum',
+    enum: ActivityStatus,
+    default: ActivityStatus.PENDING,
+  })
+  status: ActivityStatus;
+
   @Column('timestamp')
   executionDate: Date;
 
-  @Column('decimal', { precision: 5, scale: 2, default: 0 })
+  @Column('decimal', { precision: 5, scale: 2, default: 0, transformer: {
+    to: (value: number) => value,
+    from: (value: string) => parseFloat(value),
+  }})
+  @Transform(({ value }) => parseFloat(value), { toPlainOnly: true })
   hoursWorked: number;
 
   @Column({ type: 'jsonb', default: {} })

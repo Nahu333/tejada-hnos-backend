@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { FieldController } from '@controllers/field.controller';
 import { authenticate } from '@middlewares/auth.middleware';
 import { authorize } from '@middlewares/authorize.middleware';
+import { authorizeFieldAccess } from '@middlewares/authorize-field-access.middleware';
 import { UserRole } from '@/enums/index';
 import { DataSource } from 'typeorm';
 import { validateData } from '@/middlewares/validation.middleware';
@@ -22,14 +23,15 @@ export const createFieldRoutes = (dataSource: DataSource): Router => {
    * @desc    Obtener todos los campos
    * @access  Logged-in users
    */
-  router.get('/', fieldController.getFields);
+  router.get('/', authorizeFieldAccess(dataSource), fieldController.getFields);
 
   /**
    * @route   GET /fields/:id
    * @desc    Obtener un campo por su ID
    * @access  Logged-in users
+   * @security Valida acceso según campos gestionados
    */
-  router.get('/:id', fieldController.getFieldById);
+  router.get('/:id', authorizeFieldAccess(dataSource), fieldController.getFieldById);
 
   /**
    * @route   POST /fields
@@ -53,11 +55,11 @@ export const createFieldRoutes = (dataSource: DataSource): Router => {
   router.delete('/:id', authorize(UserRole.ADMIN), fieldController.deleteField);
 
   /**
-   * @route   POST /fields/:id/restore
+   * @route   PATCH /fields/:id/restore
    * @desc    Restaurar un campo eliminado
    * @access  Admin only
    */
-  router.post('/:id/restore', authorize(UserRole.ADMIN), fieldController.restoreField);
+  router.patch('/:id/restore', authorize(UserRole.ADMIN), fieldController.restoreField);
 
   /**
    * @route   DELETE /fields/:id/permanent

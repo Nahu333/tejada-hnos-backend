@@ -1,0 +1,109 @@
+import { Router } from 'express';
+import { HarvestLotController } from '@controllers/harvest-lot.controller';
+import { authenticate } from '@middlewares/auth.middleware';
+import { authorize } from '@middlewares/authorize.middleware';
+import { UserRole } from '@/enums/index';
+import { DataSource } from 'typeorm';
+import { validateData } from '@/middlewares/validation.middleware';
+import { CreateHarvestLotDto, UpdateHarvestLotDto, ProcessHarvestLotDto } from '@/dtos/harvest-lot.dto';
+
+export const createHarvestLotRoutes = (dataSource: DataSource): Router => {
+  const router = Router();
+  const harvestLotController = new HarvestLotController(dataSource);
+
+  // Todas las rutas requieren autenticación
+  router.use(authenticate);
+
+  /**
+   * @route   POST /harvest-lots
+   * @desc    Crear un nuevo lote de cosecha (registro de peso bruto)
+   * @access  ADMIN, CAPATAZ
+   */
+  router.post(
+    '/',
+    authorize(UserRole.ADMIN, UserRole.CAPATAZ),
+    validateData(CreateHarvestLotDto),
+    harvestLotController.createHarvestLot
+  );
+
+  /**
+   * @route   GET /harvest-lots
+   * @desc    Obtener todos los lotes de cosecha
+   * @access  ADMIN, CAPATAZ
+   */
+  router.get(
+    '/',
+    authorize(UserRole.ADMIN, UserRole.CAPATAZ),
+    harvestLotController.getHarvestLots
+  );
+
+  /**
+   * @route   GET /harvest-lots/:id
+   * @desc    Obtener un lote de cosecha por su ID
+   * @access  ADMIN, CAPATAZ
+   */
+  router.get(
+    '/:id',
+    authorize(UserRole.ADMIN, UserRole.CAPATAZ),
+    harvestLotController.getHarvestLotById
+  );
+
+  /**
+   * @route   PUT /harvest-lots/:id
+   * @desc    Actualizar un lote de cosecha en estado PENDIENTE_PROCESO
+   * @access  ADMIN, CAPATAZ
+   */
+  router.put(
+    '/:id',
+    authorize(UserRole.ADMIN, UserRole.CAPATAZ),
+    validateData(UpdateHarvestLotDto),
+    harvestLotController.updateHarvestLot
+  );
+
+  /**
+   * @route   PATCH /harvest-lots/:id/process
+   * @desc    Procesar/clasificar un lote (PENDIENTE_PROCESO → EN_STOCK)
+   * @access  ADMIN, CAPATAZ
+   */
+  router.patch(
+    '/:id/process',
+    authorize(UserRole.ADMIN, UserRole.CAPATAZ),
+    validateData(ProcessHarvestLotDto),
+    harvestLotController.processHarvestLot
+  );
+
+  /**
+   * @route   DELETE /harvest-lots/:id
+   * @desc    Eliminar un lote de cosecha (soft delete)
+   * @access  ADMIN only
+   */
+  router.delete(
+    '/:id',
+    authorize(UserRole.ADMIN),
+    harvestLotController.deleteHarvestLot
+  );
+
+  /**
+   * @route   PATCH /harvest-lots/:id/restore
+   * @desc    Restaurar un lote de cosecha eliminado
+   * @access  ADMIN only
+   */
+  router.patch(
+    '/:id/restore',
+    authorize(UserRole.ADMIN),
+    harvestLotController.restoreHarvestLot
+  );
+
+  /**
+   * @route   DELETE /harvest-lots/:id/permanent
+   * @desc    Eliminar permanentemente un lote de cosecha (hard delete)
+   * @access  ADMIN only
+   */
+  router.delete(
+    '/:id/permanent',
+    authorize(UserRole.ADMIN),
+    harvestLotController.hardDeleteHarvestLot
+  );
+
+  return router;
+};
